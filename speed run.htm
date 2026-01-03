@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>Speed Run - Dashboard Layout</title>
+    <style>
+        /* 全局佈局調整 */
+        body { 
+            margin: 0; 
+            background: #050505; 
+            height: 100vh; 
+            color: white; 
+            font-family: 'Consolas', 'Monaco', monospace; 
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 主容器：左右分欄 */
+        .layout-wrapper {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        /* 左側儀表板 (Dashboard) */
+        .dashboard {
+            width: 220px;
+            background: #111;
+            border: 2px solid #333;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 600px; /* 跟遊戲高度對齊 */
+            box-sizing: border-box;
+        }
+
+        /* 儀表板區塊 */
+        .dash-group {
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+        }
+        .dash-group:last-child { border-bottom: none; }
+
+        .dash-label {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .dash-value {
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .c-time { color: #ff4757; text-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
+        .c-score { color: #f1c40f; text-shadow: 0 0 10px rgba(241, 196, 15, 0.3); }
+        .c-high { color: #00d2d3; font-size: 20px; }
+
+        /* 系統日誌區 (增加駭客感) */
+        .system-log {
+            font-size: 12px;
+            color: #555;
+            height: 150px;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            line-height: 1.4;
+            margin-top: auto; /* 推到底部 */
+        }
+        .log-entry { margin-bottom: 4px; }
+        .log-entry.new { color: #00d2d3; }
+
+        /* 右側遊戲容器 */
+        #game-container { 
+            position: relative; 
+            border: 4px solid #333; 
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.5); 
+            width: 800px;
+            height: 600px;
+            background: #000;
+        }
+        
+        /* 覆蓋層 (Overlays) - 僅覆蓋遊戲畫面 */
+        .overlay { 
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.92); 
+            display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; 
+            z-index: 100; 
+        }
+        
+        h1 { font-size: 60px; margin: 0; letter-spacing: 5px; text-transform: uppercase; text-shadow: 0 0 25px currentColor; font-weight: 900; }
+        .subtitle { font-size: 18px; color: #bbb; margin-bottom: 20px; }
+        
+        .btn { 
+            padding: 12px 40px; font-size: 20px; cursor: pointer; 
+            background: rgba(0,0,0,0.6); border: 2px solid #fff; color: #fff; 
+            border-radius: 4px; transition: 0.2s; margin: 8px; font-weight: bold;
+        }
+        .btn:hover { transform: scale(1.05); background: #fff; color: #000; }
+        .btn-normal { border-color: #00d2d3; color: #00d2d3; }
+        .btn-normal:hover { background: #00d2d3; color: #000; box-shadow: 0 0 15px #00d2d3; }
+        .btn-hard { border-color: #ff4757; color: #ff4757; }
+        .btn-hard:hover { background: #ff4757; color: #fff; box-shadow: 0 0 15px #ff4757; }
+        
+        canvas { display: block; }
+
+        /* 操作說明 */
+        .controls-hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+            border-top: 1px solid #333;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="layout-wrapper">
+        <div class="dashboard">
+            <div class="dash-group">
+                <div class="dash-label">REMAINING TIME</div>
+                <div class="dash-value c-time" id="timer-el">00:00</div>
+            </div>
+            
+            <div class="dash-group">
+                <div class="dash-label">CURRENT SCORE</div>
+                <div class="dash-value c-score" id="score-el">0</div>
+            </div>
+
+            <div class="dash-group">
+                <div class="dash-label">HIGH SCORE</div>
+                <div class="dash-value c-high" id="high-score-el">0</div>
+            </div>
+
+            <div class="controls-hint">
+                [W/Space] Jump<br>
+                [A/D] Move<br>
+                [W/S] Ladder
+            </div>
+
+            <div class="system-log" id="system-log">
+                <div class="log-entry">System ready...</div>
+                <div class="log-entry">Waiting for user...</div>
+            </div>
+        </div>
+
+        <div id="game-container">
+            <div id="menu-overlay" class="overlay">
+                <h1 style="color: #00d2d3;">SPEED RUN</h1>
+                <p class="subtitle">System Online v16</p>
+                <button class="btn btn-normal" onclick="startGame('normal')">正常挑戰 (25s)</button>
+                <button class="btn btn-hard" onclick="startGame('hard')">極限挑戰 (12s)</button>
+            </div>
+
+            <div id="clear-overlay" class="overlay" style="display: none;">
+                <h1 style="color: #f1c40f;">LEVEL CLEAR</h1>
+                <p class="subtitle" style="color:#f1c40f">Score +<span id="score-gain-el">0</span></p>
+                <button class="btn btn-normal" onclick="nextLevel('normal')">繼續 (普通)</button>
+                <button class="btn btn-hard" onclick="nextLevel('hard')">繼續 (極限)</button>
+            </div>
+
+            <div id="fail-overlay" class="overlay" style="display: none;">
+                <h1 style="color: #ff4757;">GAME OVER</h1>
+                <p id="fail-msg" style="color:#aaa; margin-bottom: 20px; font-size: 18px;"></p>
+                <button class="btn" onclick="showMainMenu()">重回主選單</button>
+            </div>
+
+            <canvas id="gameCanvas"></canvas>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 800; canvas.height = 600;
+
+let score = 0;
+let highScore = localStorage.getItem('mazeRunHighScore') || 0;
+let gameActive = false;
+let isDead = false;
+let startTime, timeLimit, lastTime = 0;
+const FPS = 60;
+const frameDelay = 1000 / FPS;
+const gravity = 0.6;
+
+const player = { x: 50, y: 530, width: 22, height: 22, color: '#00d2d3', dx: 0, dy: 0, speed: 5, jumpPower: -11.5, grounded: false, onLadder: false };
+let platforms = [];
+let ladders = [];
+let goal = { x: 0, y: 0, w: 40, h: 65 };
+let particles = [];
+
+document.getElementById('high-score-el').innerText = highScore;
+
+// --- 日誌系統 ---
+function log(msg) {
+    const logEl = document.getElementById('system-log');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry new';
+    entry.innerText = `> ${msg}`;
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+    
+    // 限制日誌長度
+    if(logEl.children.length > 8) logEl.removeChild(logEl.firstChild);
+}
+
+function generateLevel(difficulty) {
+    platforms = [];
+    ladders = [];
+    platforms.push({ x: 0, y: 580, w: 800, h: 20, type: 'main' });
+
+    const layerCount = 4;
+    const layerHeight = 110;
+    let prevLadderX = 400; 
+    
+    for(let i = 1; i <= layerCount; i++) {
+        let y = 580 - (i * layerHeight);
+        let minW = (difficulty === 'hard') ? 80 : 120;
+        
+        let direction = Math.random() > 0.5 ? 1 : -1;
+        let shift = (100 + Math.random() * 150) * direction;
+        let pMainX = prevLadderX + shift;
+        
+        if (pMainX < 50) pMainX = 50 + Math.random() * 100;
+        if (pMainX > 650) pMainX = 650 - Math.random() * 100;
+        
+        let pMainW = minW + Math.random() * 60;
+        platforms.push({ x: pMainX, y: y, w: pMainW, h: 12, type: 'main' });
+
+        let ladX = pMainX + 10 + Math.random() * (pMainW - 55);
+        ladders.push({ x: ladX, y: y, w: 35, h: layerHeight + 12 });
+        prevLadderX = ladX; 
+
+        let decoyCount = Math.random() > 0.5 ? 2 : 1;
+        for(let d=0; d<decoyCount; d++) {
+            let pDecoyW = minW + Math.random() * 50;
+            let pDecoyX = Math.random() * (800 - pDecoyW);
+            if (Math.abs(pDecoyX - pMainX) > 100) {
+                platforms.push({ x: pDecoyX, y: y, w: pDecoyW, h: 12, type: 'decoy' });
+            }
+        }
+    }
+
+    const topLadder = ladders[ladders.length - 1];
+    platforms.push({ x: topLadder.x - 30, y: topLadder.y - 80, w: 100, h: 12, type: 'goal' });
+    goal.x = topLadder.x;
+    goal.y = topLadder.y - 80 - 65;
+}
+
+function startGame(mode) {
+    score = 0;
+    updateScoreBoard();
+    document.getElementById('menu-overlay').style.display = 'none';
+    log(`Mode: ${mode.toUpperCase()} initialized.`);
+    startLevel(mode);
+}
+
+function nextLevel(mode) {
+    document.getElementById('clear-overlay').style.display = 'none';
+    log(`Next Level: ${mode.toUpperCase()}`);
+    startLevel(mode);
+}
+
+function showMainMenu() {
+    gameActive = false;
+    document.getElementById('fail-overlay').style.display = 'none';
+    document.getElementById('menu-overlay').style.display = 'flex';
+    document.getElementById('high-score-el').innerText = highScore;
+    generateLevel('normal');
+    draw(); 
+    log("Returned to Main Menu.");
+}
+
+function startLevel(mode) {
+    timeLimit = (mode === 'hard') ? 12000 : 25000;
+    player.x = 50; player.y = 530; player.dx = 0; player.dy = 0;
+    generateLevel(mode);
+    isDead = false;
+    gameActive = true;
+    particles = [];
+    startTime = Date.now();
+    lastTime = performance.now();
+    requestAnimationFrame(gameLoop);
+}
+
+function updateScoreBoard() {
+    document.getElementById('score-el').innerText = score;
+}
+
+function gameLoop(timestamp) {
+    if (!gameActive) return;
+    const deltaTime = timestamp - lastTime;
+    if (deltaTime >= frameDelay) {
+        update();
+        draw();
+        lastTime = timestamp - (deltaTime % frameDelay);
+    }
+    requestAnimationFrame(gameLoop);
+}
+
+function update() {
+    let elapsed = Date.now() - startTime;
+    let remaining = timeLimit - elapsed;
+    if (remaining <= 0) { remaining = 0; explode("TIME'S UP"); }
+    
+    let secs = Math.floor(remaining / 1000);
+    let ms = Math.floor((remaining % 1000) / 10);
+    document.getElementById('timer-el').innerText = `${secs.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')}`;
+
+    if (isDead) {
+        particles.forEach((p, i) => { p.x += p.sx; p.y += p.sy; p.a -= 0.02; if (p.a <= 0) particles.splice(i, 1); });
+        return;
+    }
+
+    const keys = window.myKeys || {};
+    player.dx = (keys['ArrowLeft'] || keys['KeyA']) ? -player.speed : (keys['ArrowRight'] || keys['KeyD']) ? player.speed : 0;
+    
+    player.onLadder = false;
+    ladders.forEach(l => {
+        if (player.x + player.width/2 > l.x && player.x + player.width/2 < l.x + l.w && 
+            player.y + player.height > l.y && player.y < l.y + l.h) {
+            player.onLadder = true;
+        }
+    });
+
+    if (player.onLadder) {
+        player.dy = (keys['ArrowUp'] || keys['KeyW']) ? -player.speed : (keys['ArrowDown'] || keys['KeyS']) ? player.speed : 0;
+    } else {
+        if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) { 
+            player.dy = player.jumpPower; 
+            player.grounded = false; 
+        }
+        player.dy += gravity;
+    }
+
+    player.x += player.dx; player.y += player.dy;
+
+    player.grounded = false;
+    platforms.forEach(p => {
+        if (player.dy >= 0 && player.x + player.width > p.x && player.x < p.x + p.w && 
+            player.y + player.height <= p.y + 15 && player.y + player.height + player.dy >= p.y) {
+            player.y = p.y - player.height; player.dy = 0; player.grounded = true;
+        }
+    });
+
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > 800) player.x = 800 - player.width;
+    if (player.y > 600) explode("FELL INTO ABYSS");
+
+    if (player.x + player.width > goal.x && player.x < goal.x + goal.w && 
+        player.y + player.height > goal.y && player.y < goal.y + goal.h) {
+        gameActive = false;
+        let points = (timeLimit < 15000) ? 100 : 50;
+        score += points;
+        updateScoreBoard();
+        document.getElementById('score-gain-el').innerText = points;
+        document.getElementById('clear-overlay').style.display = 'flex';
+        log(`Level Cleared. Score +${points}`);
+    }
+}
+
+function explode(msg) {
+    if (isDead) return;
+    isDead = true; gameActive = false;
+    document.getElementById('fail-msg').innerText = msg;
+    log(`FAILURE: ${msg}`);
+    updateScoreBoard();
+    if (score > highScore) { 
+        highScore = score; 
+        localStorage.setItem('mazeRunHighScore', highScore);
+        document.getElementById('high-score-el').innerText = highScore;
+        log("New High Score Record!");
+    }
+    
+    for (let i = 0; i < 40; i++) {
+        particles.push({ x: player.x + 11, y: player.y + 11, sx: (Math.random()-0.5)*10, sy: (Math.random()-0.5)*10, a: 1 });
+    }
+    setTimeout(() => {
+        document.getElementById('fail-overlay').style.display = 'flex';
+    }, 1000);
+    requestAnimationFrame(explosionLoop);
+}
+
+function explosionLoop() {
+    if (!isDead) return;
+    ctx.clearRect(0, 0, 800, 600);
+    drawScene();
+    particles.forEach((p, i) => {
+        p.x += p.sx; p.y += p.sy; p.a -= 0.02;
+        if (p.a <= 0) particles.splice(i, 1);
+        ctx.globalAlpha = p.a; ctx.fillStyle = '#ff4757'; ctx.fillRect(p.x, p.y, 4, 4);
+    });
+    ctx.globalAlpha = 1;
+    if (particles.length > 0) requestAnimationFrame(explosionLoop);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, 800, 600);
+    drawScene();
+    if (!isDead && gameActive) { 
+        ctx.fillStyle = player.color; 
+        ctx.shadowBlur = 10; ctx.shadowColor = player.color; 
+        ctx.fillRect(player.x, player.y, player.width, player.height); 
+        ctx.shadowBlur = 0;
+    }
+}
+
+function drawScene() {
+    // 梯子
+    ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 3;
+    ctx.shadowBlur = 15; ctx.shadowColor = '#39ff14';
+    ladders.forEach(l => { 
+        ctx.strokeRect(l.x, l.y, l.w, l.h); 
+        for(let i=10; i<l.h; i+=20) { ctx.beginPath(); ctx.moveTo(l.x, l.y+i); ctx.lineTo(l.x+l.w, l.y+i); ctx.stroke(); }
+    });
+    ctx.shadowBlur = 0;
+
+    // 平台
+    ctx.fillStyle = '#be2edd';
+    ctx.shadowBlur = 15; ctx.shadowColor = '#be2edd';
+    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+    
+    // 終點
+    ctx.fillStyle = '#f1c40f';
+    ctx.shadowBlur = 25; ctx.shadowColor = '#f1c40f';
+    ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+    
+    ctx.shadowBlur = 0;
+}
+
+window.myKeys = {};
+window.addEventListener('keydown', e => window.myKeys[e.code] = true);
+window.addEventListener('keyup', e => window.myKeys[e.code] = false);
+
+generateLevel('normal');
+draw();
+</script>
+</body>
+</html>
