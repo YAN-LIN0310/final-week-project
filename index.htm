@@ -2,42 +2,22 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>Maze Run - Final Dashboard Edition</title>
+    <title>Maze Run - Professional Refactored v1.3</title>
     <style>
-        body { 
-            margin: 0; background: #050505; height: 100vh; color: white; 
-            font-family: 'Consolas', monospace; overflow: hidden;
-            display: flex; align-items: center; justify-content: center;
-        }
+        /* CSS 保持不變，維持你的視覺設計 */
+        body { margin: 0; background: #050505; height: 100vh; color: white; font-family: 'Consolas', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .layout-wrapper { display: flex; gap: 20px; align-items: flex-start; }
-        
-        /* 側欄儀表板 */
-        .dashboard { 
-            width: 220px; background: #111; border: 2px solid #333; 
-            padding: 20px; border-radius: 8px; height: 600px; 
-            box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; 
-        }
+        .dashboard { width: 220px; background: #111; border: 2px solid #333; padding: 20px; border-radius: 8px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; }
         .dash-group { border-bottom: 1px solid #333; padding-bottom: 15px; }
         .dash-label { color: #888; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }
         .dash-value { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
         .c-time { color: #ff4757; } .c-score { color: #f1c40f; } .c-high { color: #00d2d3; font-size: 20px; }
-        
-        /* 遊戲容器 */
         #game-container { position: relative; border: 4px solid #333; width: 800px; height: 600px; background: #000; }
-        .overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.92); display: flex; flex-direction: column; 
-            justify-content: center; align-items: center; z-index: 100; 
-        }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
         h1 { font-size: 60px; margin: 0; letter-spacing: 5px; text-transform: uppercase; text-shadow: 0 0 25px currentColor; }
-        
-        .btn { 
-            padding: 12px 40px; font-size: 20px; cursor: pointer; background: rgba(0,0,0,0.6); 
-            border: 2px solid #fff; color: #fff; border-radius: 4px; transition: 0.2s; margin: 8px; font-weight: bold; 
-        }
+        .btn { padding: 12px 40px; font-size: 20px; cursor: pointer; background: rgba(0,0,0,0.6); border: 2px solid #fff; color: #fff; border-radius: 4px; transition: 0.2s; margin: 8px; font-weight: bold; }
         .btn:hover { transform: scale(1.05); background: #fff; color: #000; }
         .btn-normal { border-color: #00d2d3; color: #00d2d3; } .btn-hard { border-color: #ff4757; color: #ff4757; }
-        
         canvas { display: block; }
         .system-log { font-size: 12px; color: #555; height: 150px; overflow: hidden; margin-top: auto; }
     </style>
@@ -47,27 +27,27 @@
     <div class="layout-wrapper">
         <div class="dashboard">
             <div class="dash-group">
-                <div class="dash-label">REMAINING TIME</div>
+                <div class="dash-label">Remaining Time</div>
                 <div class="dash-value c-time" id="timer-el">00:00</div>
             </div>
             <div class="dash-group">
-                <div class="dash-label">CURRENT SCORE</div>
+                <div class="dash-label">Current Score</div>
                 <div class="dash-value c-score" id="score-el">0</div>
             </div>
             <div class="dash-group">
-                <div class="dash-label">HIGH SCORE</div>
+                <div class="dash-label">High Score</div>
                 <div class="dash-value c-high" id="high-score-el">0</div>
             </div>
             <div class="system-log" id="system-log">
-                <div class="log-entry">System Rebooted...</div>
-                <div class="log-entry">Ladder Sensitivity Fixed.</div>
+                <div class="log-entry">System Initialized...</div>
+                <div class="log-entry">PEP 8 Standards Applied.</div>
             </div>
         </div>
 
         <div id="game-container">
             <div id="menu-overlay" class="overlay">
                 <h1 style="color: #00d2d3;">MAZE RUN</h1>
-                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.1</p>
+                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.3</p>
                 <button class="btn btn-normal" onclick="startGame('normal')">正常挑戰</button>
                 <button class="btn btn-hard" onclick="startGame('hard')">極限挑戰</button>
             </div>
@@ -86,112 +66,213 @@
     </div>
 
 <script>
+/**
+ * 遊戲常數配置 (符合 PEP 8 UPPER_CASE 命名規範) 
+ */
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+const GRAVITY = 0.6;
+const FPS = 60;
+const FRAME_DELAY = 1000 / FPS;
+const LADDER_BUFFER = 10;
+
+// DOM 節點快取 (優化性能，減少每影格搜尋)
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = 800; canvas.height = 600;
+const timerEl = document.getElementById('timer-el');
+const scoreEl = document.getElementById('score-el');
+const highScoreEl = document.getElementById('high-score-el');
 
-let score = 0, highScore = localStorage.getItem('mazeRunHighScore') || 0;
-let gameActive = false, isDead = false, startTime, timeLimit, lastTime = 0;
-const FPS = 60, frameDelay = 1000 / FPS, gravity = 0.6;
+canvas.width = CANVAS_WIDTH; 
+canvas.height = CANVAS_HEIGHT;
 
-const player = { x: 50, y: 530, width: 22, height: 22, color: '#00d2d3', dx: 0, dy: 0, speed: 5, jumpPower: -11.5, grounded: false, onLadder: false };
-let platforms = [], ladders = [], traps = [], goal = { x: 0, y: 0, w: 40, h: 65 }, particles = [];
+// 遊戲狀態變數
+let score = 0;
+let highScore = parseInt(localStorage.getItem('mazeRunHighScore')) || 0; // 顯式轉換為整數 [cite: 101]
+let gameActive = false;
+let isDead = false;
+let startTime, timeLimit, lastTime = 0;
 
-document.getElementById('high-score-el').innerText = highScore;
+/**
+ * 玩家物件定義
+ */
+const player = { 
+    x: 50, y: 530, width: 22, height: 22, color: '#00d2d3', 
+    dx: 0, dy: 0, speed: 5, jumpPower: -11.5, grounded: false, onLadder: false 
+};
 
-function log(msg) {
+// 場景物件容器
+let platforms = [], ladders = [], traps = [], particles = [];
+let goal = { x: 0, y: 0, w: 40, h: 65 };
+
+highScoreEl.innerText = highScore;
+
+/**
+ * 系統日誌紀錄
+ * @param {string} msg - 顯示的訊息內容
+ */
+function logSystem(msg) {
     const logEl = document.getElementById('system-log');
     const entry = document.createElement('div');
     entry.innerText = `> ${msg}`;
     logEl.appendChild(entry);
-    if(logEl.children.length > 8) logEl.removeChild(logEl.firstChild);
+    
+    // 維持日誌長度，確保排版整潔
+    if(logEl.children.length > 8) {
+        logEl.removeChild(logEl.firstChild);
+    }
 }
 
+/**
+ * 隨機關卡生成演算法
+ * @param {string} difficulty - 難度等級 ('normal' 或 'hard')
+ */
 function generateLevel(difficulty) {
+    // 初始地面
     platforms = [{ x: 0, y: 580, w: 800, h: 20 }];
-    ladders = []; traps = [];
-    const layerCount = 4, layerHeight = 110;
+    ladders = []; 
+    traps = [];
+    
+    const layerCount = 4;
+    const layerHeight = 110;
     let prevLadderX = 400; 
     
     for(let i = 1; i <= layerCount; i++) {
         let y = 580 - (i * layerHeight);
         let pMainX = prevLadderX + (Math.random() > 0.5 ? 1 : -1) * (120 + Math.random() * 120);
-        if (pMainX < 50) pMainX = 100; if (pMainX > 650) pMainX = 600;
+        
+        // 邊界限制 [cite: 240]
+        if (pMainX < 50) pMainX = 100; 
+        if (pMainX > 650) pMainX = 600;
+        
         let pMainW = (difficulty === 'hard' ? 90 : 130) + Math.random() * 40;
+        
         let newPlatform = { x: pMainX, y: y, w: pMainW, h: 12 };
         platforms.push(newPlatform);
+        
         ladders.push({ x: pMainX + 20, y: y, w: 35, h: layerHeight + 12 });
         prevLadderX = pMainX + 20;
 
+        // 陷阱生成判定 (增加邏輯穩定性) [cite: 151]
         if (traps.length < 5 && Math.random() > 0.45) {
-            traps.push({ x: newPlatform.x + (newPlatform.w/2) - 10, y: newPlatform.y - 8, w: 20, h: 8 });
+            traps.push({ 
+                x: newPlatform.x + (newPlatform.w / 2) - 10, 
+                y: newPlatform.y - 8, 
+                w: 20, 
+                h: 8 
+            });
         }
     }
-    const lastL = ladders[ladders.length-1];
-    platforms.push({ x: lastL.x - 30, y: lastL.y - 80, w: 100, h: 12 });
-    goal = { x: lastL.x, y: lastL.y - 80 - 65, w: 40, h: 65 };
+    
+    const lastLadder = ladders[ladders.length - 1];
+    platforms.push({ x: lastLadder.x - 30, y: lastLadder.y - 80, w: 100, h: 12 });
+    goal = { x: lastLadder.x, y: lastLadder.y - 80 - 65, w: 40, h: 65 };
 }
 
-function explode(msg) {
+/**
+ * 觸發死亡炸裂特效與遊戲結束邏輯
+ * @param {string} msg - 死亡原因訊息
+ */
+function triggerExplosion(msg) {
     if (isDead) return;
-    isDead = true; gameActive = false; 
+    
+    isDead = true; 
+    gameActive = false; 
     document.getElementById('fail-msg').innerText = msg;
-    log(`FAILURE: ${msg}`);
+    logSystem(`FAILURE: ${msg}`);
 
+    // 更新最高分 [cite: 235]
     if (score > highScore) {
         highScore = score;
         localStorage.setItem('mazeRunHighScore', score);
-        document.getElementById('high-score-el').innerText = highScore;
+        highScoreEl.innerText = highScore;
     }
 
+    // 生成粒子特效
     particles = [];
     for (let i = 0; i < 40; i++) {
         particles.push({
-            x: player.x + player.width/2, y: player.y + player.height/2,
-            sx: (Math.random() - 0.5) * 10, sy: (Math.random() - 0.5) * 10,
-            alpha: 1, size: Math.random() * 4 + 2, color: player.color
+            x: player.x + player.width / 2, 
+            y: player.y + player.height / 2,
+            sx: (Math.random() - 0.5) * 10, 
+            sy: (Math.random() - 0.5) * 10,
+            alpha: 1, 
+            size: Math.random() * 4 + 2, 
+            color: player.color
         });
     }
-    requestAnimationFrame(explosionLoop);
-    setTimeout(() => { document.getElementById('fail-overlay').style.display = 'flex'; }, 1200);
+    
+    requestAnimationFrame(explosionAnimationLoop);
+    
+    // 延遲顯示失敗介面，增加沉浸感
+    setTimeout(() => { 
+        document.getElementById('fail-overlay').style.display = 'flex'; 
+    }, 1200);
 }
 
-function explosionLoop() {
+/**
+ * 死亡動畫循環
+ */
+function explosionAnimationLoop() {
     if (!isDead) return;
-    ctx.clearRect(0, 0, 800, 600);
-    drawScene(); 
+    
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawStaticScene(); 
+    
     let hasLiveParticles = false;
     particles.forEach(p => {
-        p.x += p.sx; p.y += p.sy; p.alpha -= 0.02;
+        p.x += p.sx; 
+        p.y += p.sy; 
+        p.alpha -= 0.02;
+        
         if (p.alpha > 0) {
             hasLiveParticles = true;
-            ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
-            ctx.fillRect(p.x, p.y, p.size, p.size); ctx.restore();
+            ctx.save(); 
+            ctx.globalAlpha = p.alpha; 
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size); 
+            ctx.restore();
         }
     });
-    if (hasLiveParticles) requestAnimationFrame(explosionLoop);
+    
+    if (hasLiveParticles) {
+        requestAnimationFrame(explosionAnimationLoop);
+    }
 }
 
+/**
+ * 遊戲主邏輯更新 (每幀執行) [cite: 150]
+ */
 function update() {
     if (!gameActive || isDead) return;
 
+    // 時間管理 [cite: 249]
     let elapsed = Date.now() - startTime;
-    remainingTime = timeLimit - elapsed;
-    if (remainingTime <= 0) { remainingTime = 0; explode("TIME EXPIRED"); return; }
-
-    document.getElementById('timer-el').innerText = `${Math.floor(remainingTime/1000).toString().padStart(2,'0')}:${Math.floor((remainingTime%1000)/10).toString().padStart(2,'0')}`;
-
-    const keys = window.myKeys || {};
-    player.dx = keys['KeyA'] || keys['ArrowLeft'] ? -player.speed : keys['KeyD'] || keys['ArrowRight'] ? player.speed : 0;
+    let remainingTime = timeLimit - elapsed;
     
-    // 梯子判定優化：放寬左右判定範圍 (Buffer)
+    if (remainingTime <= 0) { 
+        remainingTime = 0; 
+        triggerExplosion("TIME EXPIRED"); 
+        return; 
+    }
+
+    // 更新計時器顯示
+    const secs = Math.floor(remainingTime / 1000).toString().padStart(2, '0');
+    const msecs = Math.floor((remainingTime % 1000) / 10).toString().padStart(2, '0');
+    timerEl.innerText = `${secs}:${msecs}`;
+
+    // 鍵盤輸入處理
+    const keys = window.myKeys || {};
+    player.dx = (keys['KeyA'] || keys['ArrowLeft']) ? -player.speed : 
+                (keys['KeyD'] || keys['ArrowRight']) ? player.speed : 0;
+    
+    // 梯子攀爬判定 (優化碰撞邏輯) [cite: 101]
     player.onLadder = false;
-    ladders.forEach(l => { 
-        const ladderBuffer = 10;
-        if (player.x + player.width > l.x - ladderBuffer && 
-            player.x < l.x + l.w + ladderBuffer && 
-            player.y + player.height > l.y && 
-            player.y < l.y + l.h) {
+    ladders.forEach(ladder => { 
+        if (player.x + player.width > ladder.x - LADDER_BUFFER && 
+            player.x < ladder.x + ladder.w + LADDER_BUFFER && 
+            player.y + player.height > ladder.y && 
+            player.y < ladder.y + ladder.h) {
             player.onLadder = true; 
         } 
     });
@@ -202,86 +283,196 @@ function update() {
         if (keys['KeyS'] || keys['ArrowDown']) player.dy = player.speed;
     } else {
         if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.grounded) { 
-            player.dy = player.jumpPower; player.grounded = false; 
+            player.dy = player.jumpPower; 
+            player.grounded = false; 
         }
-        player.dy += gravity;
+        player.dy += GRAVITY;
     }
 
-    player.x += player.dx; player.y += player.dy;
+    // 更新座標
+    player.x += player.dx; 
+    player.y += player.dy;
 
-    traps.forEach(t => {
-        if (player.x < t.x + t.w && player.x + player.width > t.x && player.y < t.y + t.h && player.y + player.height > t.y) {
-            explode("TRAP TRIGGERED");
+    // 陷阱碰撞判定 [cite: 151]
+    traps.forEach(trap => {
+        if (player.x < trap.x + trap.w && player.x + player.width > trap.x && 
+            player.y < trap.y + trap.h && player.y + player.height > trap.y) {
+            triggerExplosion("TRAP TRIGGERED");
         }
     });
 
+    // 平台碰撞判定 (單向穿透平台邏輯) [cite: 238]
     player.grounded = false;
-    platforms.forEach(p => {
-        if (player.dy >= 0 && player.x + player.width > p.x && player.x < p.x + p.w && 
-            player.y + player.height <= p.y + 15 && player.y + player.height + player.dy >= p.y) {
-            player.y = p.y - player.height; player.dy = 0; player.grounded = true;
+    platforms.forEach(platform => {
+        if (player.dy >= 0 && 
+            player.x + player.width > platform.x && 
+            player.x < platform.x + platform.w && 
+            player.y + player.height <= platform.y + 15 && 
+            player.y + player.height + player.dy >= platform.y) {
+            player.y = platform.y - player.height; 
+            player.dy = 0; 
+            player.grounded = true;
         }
     });
 
-    if (player.x < 0) player.x = 0; if (player.x + 22 > 800) player.x = 800 - 22;
-    if (player.y > 600) explode("FELL INTO ABYSS");
+    // 遊戲邊界檢查 [cite: 240]
+    if (player.x < 0) player.x = 0; 
+    if (player.x + player.width > CANVAS_WIDTH) player.x = CANVAS_WIDTH - player.width;
+    if (player.y > CANVAS_HEIGHT) triggerExplosion("FELL INTO ABYSS");
     
-    if (player.x + 22 > goal.x && player.x < goal.x + goal.w && player.y + 22 > goal.y && player.y < goal.y + goal.h) {
-        gameActive = false; score += (timeLimit < 15000 ? 100 : 50); 
-        document.getElementById('score-el').innerText = score;
+    // 到達終點判定
+    if (player.x + player.width > goal.x && player.x < goal.x + goal.w && 
+        player.y + player.height > goal.y && player.y < goal.y + goal.h) {
+        gameActive = false; 
+        score += (timeLimit < 15000 ? 100 : 50); 
+        scoreEl.innerText = score;
         document.getElementById('clear-overlay').style.display = 'flex';
     }
 }
 
-function drawScene() {
-    ladders.forEach(l => { 
-        ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.shadowBlur = 25; ctx.shadowColor = '#39ff14'; ctx.globalAlpha = 0.3;
-        ctx.strokeRect(l.x, l.y, l.w, l.h);
-        ctx.globalAlpha = 1.0; ctx.lineWidth = 3; ctx.shadowBlur = 10;
-        ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x, l.y + l.h);
-        ctx.moveTo(l.x + l.w, l.y); ctx.lineTo(l.x + l.w, l.y + l.h); ctx.stroke();
+/**
+ * 繪製靜態場景 (包含梯子、平台與陷阱)
+ */
+function drawStaticScene() {
+    // 繪製梯子 (具有霓虹效果)
+    ladders.forEach(ladder => { 
+        ctx.save();
+        ctx.strokeStyle = '#39ff14'; 
+        ctx.lineWidth = 6; 
+        ctx.shadowBlur = 25; 
+        ctx.shadowColor = '#39ff14'; 
+        ctx.globalAlpha = 0.3;
+        ctx.strokeRect(ladder.x, ladder.y, ladder.w, ladder.h);
+        
+        ctx.globalAlpha = 1.0; 
+        ctx.lineWidth = 3; 
+        ctx.shadowBlur = 10;
+        ctx.beginPath(); 
+        ctx.moveTo(ladder.x, ladder.y); 
+        ctx.lineTo(ladder.x, ladder.y + ladder.h);
+        ctx.moveTo(ladder.x + ladder.w, ladder.y); 
+        ctx.lineTo(ladder.x + ladder.w, ladder.y + ladder.h); 
+        ctx.stroke();
+        
+        // 梯子橫樑
         ctx.lineWidth = 1.5;
-        for(let i = 8; i < l.h; i += 12) {
-            ctx.beginPath(); ctx.moveTo(l.x, l.y + i); ctx.lineTo(l.x + l.w, l.y + i); ctx.stroke();
+        for(let i = 8; i < ladder.h; i += 12) {
+            ctx.beginPath(); 
+            ctx.moveTo(ladder.x, ladder.y + i); 
+            ctx.lineTo(ladder.x + ladder.w, ladder.y + i); 
+            ctx.stroke();
         }
+        ctx.restore();
     });
-    ctx.shadowBlur = 0;
-    platforms.forEach(p => {
-        ctx.fillStyle = '#be2edd'; ctx.shadowBlur = 15; ctx.shadowColor = '#be2edd';
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.fillStyle = '#efb2ff'; ctx.shadowBlur = 0; ctx.fillRect(p.x, p.y, p.w, 2);
+
+    // 繪製平台
+    platforms.forEach(platform => {
+        ctx.save();
+        ctx.fillStyle = '#be2edd'; 
+        ctx.shadowBlur = 15; 
+        ctx.shadowColor = '#be2edd';
+        ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
+        // 平台頂部光條
+        ctx.fillStyle = '#efb2ff'; 
+        ctx.shadowBlur = 0; 
+        ctx.fillRect(platform.x, platform.y, platform.w, 2);
+        ctx.restore();
     });
-    traps.forEach(t => {
-        ctx.fillStyle = '#ff4757'; ctx.shadowBlur = 20; ctx.shadowColor = '#ff4757';
-        ctx.fillRect(t.x, t.y, t.w, t.h);
-        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fillRect(t.x + 5, t.y + 2, t.w - 10, 2); ctx.globalAlpha = 1.0;
+
+    // 繪製陷阱
+    traps.forEach(trap => {
+        ctx.save();
+        ctx.fillStyle = '#ff4757'; 
+        ctx.shadowBlur = 20; 
+        ctx.shadowColor = '#ff4757';
+        ctx.fillRect(trap.x, trap.y, trap.w, trap.h);
+        // 陷阱細節
+        ctx.fillStyle = '#ffffff'; 
+        ctx.globalAlpha = 0.5; 
+        ctx.fillRect(trap.x + 5, trap.y + 2, trap.w - 10, 2); 
+        ctx.restore();
     });
-    ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 35; ctx.shadowColor = '#f1c40f';
+
+    // 繪製終點
+    ctx.save();
+    ctx.fillStyle = '#f1c40f'; 
+    ctx.shadowBlur = 35; 
+    ctx.shadowColor = '#f1c40f';
     ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
-    ctx.shadowBlur = 0;
+    ctx.restore();
 }
 
+/**
+ * 畫面繪製主函式
+ */
 function draw() {
-    ctx.clearRect(0, 0, 800, 600);
-    drawScene();
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawStaticScene();
+    
     if (!isDead && gameActive) {
-        ctx.fillStyle = player.color; ctx.shadowBlur = 10; ctx.shadowColor = player.color;
-        ctx.fillRect(player.x, player.y, player.width, player.height); ctx.shadowBlur = 0;
+        ctx.save();
+        ctx.fillStyle = player.color; 
+        ctx.shadowBlur = 10; 
+        ctx.shadowColor = player.color;
+        ctx.fillRect(player.x, player.y, player.width, player.height); 
+        ctx.restore();
     }
 }
 
+/**
+ * 遊戲循環控管
+ * @param {number} t - performance.now() 提供的時間戳
+ */
 function gameLoop(t) { 
     if (!gameActive) return; 
-    if (t - lastTime >= frameDelay) { update(); draw(); lastTime = t - (t - lastTime) % frameDelay; } 
+    if (t - lastTime >= FRAME_DELAY) { 
+        update(); 
+        draw(); 
+        lastTime = t - (t - lastTime) % FRAME_DELAY; 
+    } 
     requestAnimationFrame(gameLoop); 
 }
 
-function startGame(m) { score = 0; document.getElementById('score-el').innerText = 0; document.getElementById('menu-overlay').style.display = 'none'; startLevel(m); }
-function nextLevel(m) { document.getElementById('clear-overlay').style.display = 'none'; startLevel(m); }
-function startLevel(m) { timeLimit = (m === 'hard' ? 12000 : 25000); player.x = 50; player.y = 530; generateLevel(m); isDead = false; gameActive = true; startTime = Date.now(); lastTime = performance.now(); requestAnimationFrame(gameLoop); }
-function showMainMenu() { location.reload(); }
-window.myKeys = {}; window.addEventListener('keydown', e => window.myKeys[e.code] = true); window.addEventListener('keyup', e => window.myKeys[e.code] = false);
-generateLevel('normal'); draw();
+// -------------------------------------------------------------------------
+// 介面與事件控制
+// -------------------------------------------------------------------------
+
+function startGame(mode) { 
+    score = 0; 
+    scoreEl.innerText = 0; 
+    document.getElementById('menu-overlay').style.display = 'none'; 
+    startLevel(mode); 
+}
+
+function nextLevel(mode) { 
+    document.getElementById('clear-overlay').style.display = 'none'; 
+    startLevel(mode); 
+}
+
+function startLevel(mode) { 
+    timeLimit = (mode === 'hard' ? 12000 : 25000); 
+    player.x = 50; 
+    player.y = 530; 
+    generateLevel(mode); 
+    isDead = false; 
+    gameActive = true; 
+    startTime = Date.now(); 
+    lastTime = performance.now(); 
+    requestAnimationFrame(gameLoop); 
+}
+
+function showMainMenu() { 
+    location.reload(); 
+}
+
+// 監聽鍵盤狀態 [cite: 239]
+window.myKeys = {}; 
+window.addEventListener('keydown', e => window.myKeys[e.code] = true); 
+window.addEventListener('keyup', e => window.myKeys[e.code] = false);
+
+// 初始場景繪製
+generateLevel('normal'); 
+draw();
 </script>
 </body>
 </html>
