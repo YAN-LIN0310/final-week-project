@@ -2,9 +2,8 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>Speed Run - Professional Refactored v1.3</title>
+    <title>Speed Run - Professional Refactored v1.4</title>
     <style>
-        /* CSS 保持不變，維持你的視覺設計 */
         body { margin: 0; background: #050505; height: 100vh; color: white; font-family: 'Consolas', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .layout-wrapper { display: flex; gap: 20px; align-items: flex-start; }
         .dashboard { width: 220px; background: #111; border: 2px solid #333; padding: 20px; border-radius: 8px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; }
@@ -39,15 +38,15 @@
                 <div class="dash-value c-high" id="high-score-el">0</div>
             </div>
             <div class="system-log" id="system-log">
-                <div class="log-entry">System Initialized...</div>
-                <div class="log-entry">PEP 8 Standards Applied.</div>
+                <div class="log-entry">Greed System Online...</div>
+                <div class="log-entry">Risk vs Reward Active.</div>
             </div>
         </div>
 
         <div id="game-container">
             <div id="menu-overlay" class="overlay">
                 <h1 style="color: #00d2d3;">SPEED RUN</h1>
-                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.3</p>
+                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.4</p>
                 <button class="btn btn-normal" onclick="startGame('normal')">正常挑戰</button>
                 <button class="btn btn-hard" onclick="startGame('hard')">極限挑戰</button>
             </div>
@@ -67,7 +66,7 @@
 
 <script>
 /**
- * 遊戲常數配置 (符合 PEP 8 UPPER_CASE 命名規範) 
+ * 遊戲常數配置
  */
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -75,8 +74,8 @@ const GRAVITY = 0.6;
 const FPS = 60;
 const FRAME_DELAY = 1000 / FPS;
 const LADDER_BUFFER = 10;
+const COIN_BONUS = 200; // 每顆金幣的分數
 
-// DOM 節點快取 (優化性能，減少每影格搜尋)
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const timerEl = document.getElementById('timer-el');
@@ -86,52 +85,38 @@ const highScoreEl = document.getElementById('high-score-el');
 canvas.width = CANVAS_WIDTH; 
 canvas.height = CANVAS_HEIGHT;
 
-// 遊戲狀態變數
 let score = 0;
-let highScore = parseInt(localStorage.getItem('mazeRunHighScore')) || 0; // 顯式轉換為整數 [cite: 101]
+let highScore = parseInt(localStorage.getItem('mazeRunHighScore')) || 0;
 let gameActive = false;
 let isDead = false;
 let startTime, timeLimit, lastTime = 0;
 
-/**
- * 玩家物件定義
- */
 const player = { 
     x: 50, y: 530, width: 22, height: 22, color: '#00d2d3', 
     dx: 0, dy: 0, speed: 5, jumpPower: -11.5, grounded: false, onLadder: false 
 };
 
-// 場景物件容器
-let platforms = [], ladders = [], traps = [], particles = [];
+let platforms = [], ladders = [], traps = [], coins = [], particles = [];
 let goal = { x: 0, y: 0, w: 40, h: 65 };
 
 highScoreEl.innerText = highScore;
 
-/**
- * 系統日誌紀錄
- * @param {string} msg - 顯示的訊息內容
- */
 function logSystem(msg) {
     const logEl = document.getElementById('system-log');
     const entry = document.createElement('div');
     entry.innerText = `> ${msg}`;
     logEl.appendChild(entry);
-    
-    // 維持日誌長度，確保排版整潔
-    if(logEl.children.length > 8) {
-        logEl.removeChild(logEl.firstChild);
-    }
+    if(logEl.children.length > 8) logEl.removeChild(logEl.firstChild);
 }
 
 /**
- * 隨機關卡生成演算法
- * @param {string} difficulty - 難度等級 ('normal' 或 'hard')
+ * 隨機關卡生成演算法 (新增金幣生成)
  */
 function generateLevel(difficulty) {
-    // 初始地面
     platforms = [{ x: 0, y: 580, w: 800, h: 20 }];
     ladders = []; 
     traps = [];
+    coins = [];
     
     const layerCount = 4;
     const layerHeight = 110;
@@ -140,139 +125,95 @@ function generateLevel(difficulty) {
     for(let i = 1; i <= layerCount; i++) {
         let y = 580 - (i * layerHeight);
         let pMainX = prevLadderX + (Math.random() > 0.5 ? 1 : -1) * (120 + Math.random() * 120);
-        
-        // 邊界限制 [cite: 240]
-        if (pMainX < 50) pMainX = 100; 
-        if (pMainX > 650) pMainX = 600;
-        
+        if (pMainX < 50) pMainX = 100; if (pMainX > 650) pMainX = 600;
         let pMainW = (difficulty === 'hard' ? 90 : 130) + Math.random() * 40;
         
         let newPlatform = { x: pMainX, y: y, w: pMainW, h: 12 };
         platforms.push(newPlatform);
-        
         ladders.push({ x: pMainX + 20, y: y, w: 35, h: layerHeight + 12 });
         prevLadderX = pMainX + 20;
 
-        // 陷阱生成判定 (增加邏輯穩定性) [cite: 151]
         if (traps.length < 5 && Math.random() > 0.45) {
-            traps.push({ 
-                x: newPlatform.x + (newPlatform.w / 2) - 10, 
-                y: newPlatform.y - 8, 
-                w: 20, 
-                h: 8 
-            });
+            traps.push({ x: newPlatform.x + (newPlatform.w/2) - 10, y: newPlatform.y - 8, w: 20, h: 8 });
         }
     }
     
-    const lastLadder = ladders[ladders.length - 1];
+    // 生成誘惑金幣 (0~8 顆)
+    const coinCount = Math.floor(Math.random() * 9);
+    for(let i = 0; i < coinCount; i++) {
+        coins.push({
+            x: 50 + Math.random() * 700,
+            y: 100 + Math.random() * 400,
+            baseY: 0, // 用於記錄初始高度進行飄動
+            size: 15,
+            collected: false,
+            angle: Math.random() * Math.PI * 2 // 初始旋轉角度
+        });
+    }
+    
+    const lastLadder = ladders[ladders.length-1];
     platforms.push({ x: lastLadder.x - 30, y: lastLadder.y - 80, w: 100, h: 12 });
     goal = { x: lastLadder.x, y: lastLadder.y - 80 - 65, w: 40, h: 65 };
 }
 
-/**
- * 觸發死亡炸裂特效與遊戲結束邏輯
- * @param {string} msg - 死亡原因訊息
- */
 function triggerExplosion(msg) {
     if (isDead) return;
-    
-    isDead = true; 
-    gameActive = false; 
+    isDead = true; gameActive = false; 
     document.getElementById('fail-msg').innerText = msg;
     logSystem(`FAILURE: ${msg}`);
 
-    // 更新最高分 [cite: 235]
     if (score > highScore) {
         highScore = score;
         localStorage.setItem('mazeRunHighScore', score);
         highScoreEl.innerText = highScore;
     }
 
-    // 生成粒子特效
     particles = [];
     for (let i = 0; i < 40; i++) {
         particles.push({
-            x: player.x + player.width / 2, 
-            y: player.y + player.height / 2,
-            sx: (Math.random() - 0.5) * 10, 
-            sy: (Math.random() - 0.5) * 10,
-            alpha: 1, 
-            size: Math.random() * 4 + 2, 
-            color: player.color
+            x: player.x + player.width/2, y: player.y + player.height/2,
+            sx: (Math.random() - 0.5) * 10, sy: (Math.random() - 0.5) * 10,
+            alpha: 1, size: Math.random() * 4 + 2, color: player.color
         });
     }
-    
     requestAnimationFrame(explosionAnimationLoop);
-    
-    // 延遲顯示失敗介面，增加沉浸感
-    setTimeout(() => { 
-        document.getElementById('fail-overlay').style.display = 'flex'; 
-    }, 1200);
+    setTimeout(() => { document.getElementById('fail-overlay').style.display = 'flex'; }, 1200);
 }
 
-/**
- * 死亡動畫循環
- */
 function explosionAnimationLoop() {
     if (!isDead) return;
-    
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawStaticScene(); 
-    
     let hasLiveParticles = false;
     particles.forEach(p => {
-        p.x += p.sx; 
-        p.y += p.sy; 
-        p.alpha -= 0.02;
-        
+        p.x += p.sx; p.y += p.sy; p.alpha -= 0.02;
         if (p.alpha > 0) {
             hasLiveParticles = true;
-            ctx.save(); 
-            ctx.globalAlpha = p.alpha; 
-            ctx.fillStyle = p.color;
-            ctx.fillRect(p.x, p.y, p.size, p.size); 
-            ctx.restore();
+            ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size); ctx.restore();
         }
     });
-    
-    if (hasLiveParticles) {
-        requestAnimationFrame(explosionAnimationLoop);
-    }
+    if (hasLiveParticles) requestAnimationFrame(explosionAnimationLoop);
 }
 
-/**
- * 遊戲主邏輯更新 (每幀執行) [cite: 150]
- */
 function update() {
     if (!gameActive || isDead) return;
 
-    // 時間管理 [cite: 249]
     let elapsed = Date.now() - startTime;
     let remainingTime = timeLimit - elapsed;
-    
-    if (remainingTime <= 0) { 
-        remainingTime = 0; 
-        triggerExplosion("TIME EXPIRED"); 
-        return; 
-    }
+    if (remainingTime <= 0) { remainingTime = 0; triggerExplosion("TIME EXPIRED"); return; }
 
-    // 更新計時器顯示
     const secs = Math.floor(remainingTime / 1000).toString().padStart(2, '0');
     const msecs = Math.floor((remainingTime % 1000) / 10).toString().padStart(2, '0');
     timerEl.innerText = `${secs}:${msecs}`;
 
-    // 鍵盤輸入處理
     const keys = window.myKeys || {};
-    player.dx = (keys['KeyA'] || keys['ArrowLeft']) ? -player.speed : 
-                (keys['KeyD'] || keys['ArrowRight']) ? player.speed : 0;
+    player.dx = (keys['KeyA'] || keys['ArrowLeft']) ? -player.speed : (keys['KeyD'] || keys['ArrowRight']) ? player.speed : 0;
     
-    // 梯子攀爬判定 (優化碰撞邏輯) [cite: 101]
     player.onLadder = false;
     ladders.forEach(ladder => { 
-        if (player.x + player.width > ladder.x - LADDER_BUFFER && 
-            player.x < ladder.x + ladder.w + LADDER_BUFFER && 
-            player.y + player.height > ladder.y && 
-            player.y < ladder.y + ladder.h) {
+        if (player.x + player.width > ladder.x - LADDER_BUFFER && player.x < ladder.x + ladder.w + LADDER_BUFFER && 
+            player.y + player.height > ladder.y && player.y < ladder.y + ladder.h) {
             player.onLadder = true; 
         } 
     });
@@ -282,195 +223,153 @@ function update() {
         if (keys['KeyW'] || keys['ArrowUp']) player.dy = -player.speed;
         if (keys['KeyS'] || keys['ArrowDown']) player.dy = player.speed;
     } else {
-        if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.grounded) { 
-            player.dy = player.jumpPower; 
-            player.grounded = false; 
-        }
+        if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.grounded) { player.dy = player.jumpPower; player.grounded = false; }
         player.dy += GRAVITY;
     }
 
-    // 更新座標
-    player.x += player.dx; 
-    player.y += player.dy;
+    player.x += player.dx; player.y += player.dy;
 
-    // 陷阱碰撞判定 [cite: 151]
+    // 金幣碰撞與動畫更新
+    coins.forEach(coin => {
+        if (!coin.collected) {
+            // 動畫更新
+            coin.angle += 0.05; // 旋轉速度
+            let hover = Math.sin(Date.now() / 200) * 5; // 上下飄動
+            
+            // 碰撞檢測 (金幣中心點半徑檢測)
+            if (player.x < coin.x + coin.size && player.x + player.width > coin.x - coin.size &&
+                player.y < coin.y + hover + coin.size && player.y + player.height > coin.y + hover - coin.size) {
+                coin.collected = true;
+                score += COIN_BONUS;
+                scoreEl.innerText = score;
+                logSystem(`COLLECTED: +${COIN_BONUS}`);
+            }
+        }
+    });
+
     traps.forEach(trap => {
-        if (player.x < trap.x + trap.w && player.x + player.width > trap.x && 
-            player.y < trap.y + trap.h && player.y + player.height > trap.y) {
+        if (player.x < trap.x + trap.w && player.x + player.width > trap.x && player.y < trap.y + trap.h && player.y + player.height > trap.y) {
             triggerExplosion("TRAP TRIGGERED");
         }
     });
 
-    // 平台碰撞判定 (單向穿透平台邏輯) [cite: 238]
     player.grounded = false;
     platforms.forEach(platform => {
-        if (player.dy >= 0 && 
-            player.x + player.width > platform.x && 
-            player.x < platform.x + platform.w && 
-            player.y + player.height <= platform.y + 15 && 
-            player.y + player.height + player.dy >= platform.y) {
-            player.y = platform.y - player.height; 
-            player.dy = 0; 
-            player.grounded = true;
+        if (player.dy >= 0 && player.x + player.width > platform.x && player.x < platform.x + platform.w && 
+            player.y + player.height <= platform.y + 15 && player.y + player.height + player.dy >= platform.y) {
+            player.y = platform.y - player.height; player.dy = 0; player.grounded = true;
         }
     });
 
-    // 遊戲邊界檢查 [cite: 240]
-    if (player.x < 0) player.x = 0; 
-    if (player.x + player.width > CANVAS_WIDTH) player.x = CANVAS_WIDTH - player.width;
+    if (player.x < 0) player.x = 0; if (player.x + player.width > CANVAS_WIDTH) player.x = CANVAS_WIDTH - player.width;
     if (player.y > CANVAS_HEIGHT) triggerExplosion("FELL INTO ABYSS");
     
-    // 到達終點判定
-    if (player.x + player.width > goal.x && player.x < goal.x + goal.w && 
-        player.y + player.height > goal.y && player.y < goal.y + goal.h) {
-        gameActive = false; 
-        score += (timeLimit < 15000 ? 100 : 50); 
+    if (player.x + player.width > goal.x && player.x < goal.x + goal.w && player.y + player.height > goal.y && player.y < goal.y + goal.h) {
+        gameActive = false; score += (timeLimit < 15000 ? 100 : 50); 
         scoreEl.innerText = score;
         document.getElementById('clear-overlay').style.display = 'flex';
     }
 }
 
-/**
- * 繪製靜態場景 (包含梯子、平台與陷阱)
- */
 function drawStaticScene() {
-    // 繪製梯子 (具有霓虹效果)
     ladders.forEach(ladder => { 
         ctx.save();
-        ctx.strokeStyle = '#39ff14'; 
-        ctx.lineWidth = 6; 
-        ctx.shadowBlur = 25; 
-        ctx.shadowColor = '#39ff14'; 
-        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.shadowBlur = 25; ctx.shadowColor = '#39ff14'; ctx.globalAlpha = 0.3;
         ctx.strokeRect(ladder.x, ladder.y, ladder.w, ladder.h);
-        
-        ctx.globalAlpha = 1.0; 
-        ctx.lineWidth = 3; 
-        ctx.shadowBlur = 10;
-        ctx.beginPath(); 
-        ctx.moveTo(ladder.x, ladder.y); 
-        ctx.lineTo(ladder.x, ladder.y + ladder.h);
-        ctx.moveTo(ladder.x + ladder.w, ladder.y); 
-        ctx.lineTo(ladder.x + ladder.w, ladder.y + ladder.h); 
-        ctx.stroke();
-        
-        // 梯子橫樑
+        ctx.globalAlpha = 1.0; ctx.lineWidth = 3; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y); ctx.lineTo(ladder.x, ladder.y + ladder.h);
+        ctx.moveTo(ladder.x + ladder.w, ladder.y); ctx.lineTo(ladder.x + ladder.w, ladder.y + ladder.h); ctx.stroke();
         ctx.lineWidth = 1.5;
         for(let i = 8; i < ladder.h; i += 12) {
-            ctx.beginPath(); 
-            ctx.moveTo(ladder.x, ladder.y + i); 
-            ctx.lineTo(ladder.x + ladder.w, ladder.y + i); 
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y + i); ctx.lineTo(ladder.x + ladder.w, ladder.y + i); ctx.stroke();
         }
         ctx.restore();
     });
 
-    // 繪製平台
     platforms.forEach(platform => {
         ctx.save();
-        ctx.fillStyle = '#be2edd'; 
-        ctx.shadowBlur = 15; 
-        ctx.shadowColor = '#be2edd';
+        ctx.fillStyle = '#be2edd'; ctx.shadowBlur = 15; ctx.shadowColor = '#be2edd';
         ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
-        // 平台頂部光條
-        ctx.fillStyle = '#efb2ff'; 
-        ctx.shadowBlur = 0; 
-        ctx.fillRect(platform.x, platform.y, platform.w, 2);
+        ctx.fillStyle = '#efb2ff'; ctx.shadowBlur = 0; ctx.fillRect(platform.x, platform.y, platform.w, 2);
         ctx.restore();
     });
 
-    // 繪製陷阱
     traps.forEach(trap => {
         ctx.save();
-        ctx.fillStyle = '#ff4757'; 
-        ctx.shadowBlur = 20; 
-        ctx.shadowColor = '#ff4757';
+        ctx.fillStyle = '#ff4757'; ctx.shadowBlur = 20; ctx.shadowColor = '#ff4757';
         ctx.fillRect(trap.x, trap.y, trap.w, trap.h);
-        // 陷阱細節
-        ctx.fillStyle = '#ffffff'; 
-        ctx.globalAlpha = 0.5; 
-        ctx.fillRect(trap.x + 5, trap.y + 2, trap.w - 10, 2); 
+        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fillRect(trap.x + 5, trap.y + 2, trap.w - 10, 2); 
         ctx.restore();
     });
 
-    // 繪製終點
+    // 繪製金幣 (誘惑系統)
+    coins.forEach(coin => {
+        if (!coin.collected) {
+            ctx.save();
+            let hover = Math.sin(Date.now() / 200) * 5;
+            let spinScale = Math.cos(coin.angle); // 模擬旋轉的寬度變化
+            
+            ctx.translate(coin.x, coin.y + hover);
+            ctx.scale(spinScale, 1); // 橫向縮放達成轉圈效果
+            
+            ctx.fillStyle = '#f1c40f';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#f1c40f';
+            
+            // 繪製圓形金幣
+            ctx.beginPath();
+            ctx.arc(0, 0, coin.size, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 內圈裝飾
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, coin.size * 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+    });
+
     ctx.save();
-    ctx.fillStyle = '#f1c40f'; 
-    ctx.shadowBlur = 35; 
-    ctx.shadowColor = '#f1c40f';
+    ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 35; ctx.shadowColor = '#f1c40f';
     ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
     ctx.restore();
 }
 
-/**
- * 畫面繪製主函式
- */
 function draw() {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawStaticScene();
-    
     if (!isDead && gameActive) {
         ctx.save();
-        ctx.fillStyle = player.color; 
-        ctx.shadowBlur = 10; 
-        ctx.shadowColor = player.color;
-        ctx.fillRect(player.x, player.y, player.width, player.height); 
-        ctx.restore();
+        ctx.fillStyle = player.color; ctx.shadowBlur = 10; ctx.shadowColor = player.color;
+        ctx.fillRect(player.x, player.y, player.width, player.height); ctx.restore();
     }
 }
 
-/**
- * 遊戲循環控管
- * @param {number} t - performance.now() 提供的時間戳
- */
 function gameLoop(t) { 
     if (!gameActive) return; 
-    if (t - lastTime >= FRAME_DELAY) { 
-        update(); 
-        draw(); 
-        lastTime = t - (t - lastTime) % FRAME_DELAY; 
-    } 
+    if (t - lastTime >= FRAME_DELAY) { update(); draw(); lastTime = t - (t - lastTime) % FRAME_DELAY; } 
     requestAnimationFrame(gameLoop); 
 }
 
-// -------------------------------------------------------------------------
-// 介面與事件控制
-// -------------------------------------------------------------------------
-
-function startGame(mode) { 
-    score = 0; 
-    scoreEl.innerText = 0; 
-    document.getElementById('menu-overlay').style.display = 'none'; 
-    startLevel(mode); 
-}
-
-function nextLevel(mode) { 
-    document.getElementById('clear-overlay').style.display = 'none'; 
-    startLevel(mode); 
-}
-
+function startGame(mode) { score = 0; scoreEl.innerText = 0; document.getElementById('menu-overlay').style.display = 'none'; startLevel(mode); }
+function nextLevel(mode) { document.getElementById('clear-overlay').style.display = 'none'; startLevel(mode); }
 function startLevel(mode) { 
     timeLimit = (mode === 'hard' ? 12000 : 25000); 
-    player.x = 50; 
-    player.y = 530; 
+    player.x = 50; player.y = 530; 
     generateLevel(mode); 
-    isDead = false; 
-    gameActive = true; 
-    startTime = Date.now(); 
-    lastTime = performance.now(); 
+    isDead = false; gameActive = true; 
+    startTime = Date.now(); lastTime = performance.now(); 
     requestAnimationFrame(gameLoop); 
 }
+function showMainMenu() { location.reload(); }
 
-function showMainMenu() { 
-    location.reload(); 
-}
-
-// 監聽鍵盤狀態 [cite: 239]
 window.myKeys = {}; 
 window.addEventListener('keydown', e => window.myKeys[e.code] = true); 
 window.addEventListener('keyup', e => window.myKeys[e.code] = false);
 
-// 初始場景繪製
 generateLevel('normal'); 
 draw();
 </script>
