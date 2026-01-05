@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>Speed Run - Professional Refactored v1.6</title>
+    <title>Speed Run - Professional Refactored v1.7</title>
     <style>
         body { margin: 0; background: #050505; height: 100vh; color: white; font-family: 'Consolas', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .layout-wrapper { display: flex; gap: 20px; align-items: flex-start; }
@@ -38,15 +38,15 @@
                 <div class="dash-value c-high" id="high-score-el">0</div>
             </div>
             <div class="system-log" id="system-log">
-                <div class="log-entry">Bug Fixed: Safe Spawn Zone.</div>
-                <div class="log-entry">Phantom Echo Reset.</div>
+                <div class="log-entry">Visual Core Updated.</div>
+                <div class="log-entry">Neon Trail: Active.</div>
             </div>
         </div>
 
         <div id="game-container">
             <div id="menu-overlay" class="overlay">
                 <h1 style="color: #00d2d3;">SPEED RUN</h1>
-                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.6</p>
+                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.7</p>
                 <button class="btn btn-normal" onclick="startGame('normal')">正常挑戰</button>
                 <button class="btn btn-hard" onclick="startGame('hard')">極限挑戰</button>
             </div>
@@ -65,9 +65,6 @@
     </div>
 
 <script>
-/**
- * 遊戲常數配置
- */
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 const GRAVITY = 0.6;
@@ -99,6 +96,7 @@ const player = {
 };
 
 let platforms = [], ladders = [], traps = [], coins = [], enemies = [], particles = [];
+let playerTrail = []; // 新增：玩家光效尾流陣列
 let playerHistory = []; 
 let goal = { x: 0, y: 0, w: 40, h: 65 };
 
@@ -112,13 +110,10 @@ function logSystem(msg) {
     if(logEl.children.length > 8) logEl.removeChild(logEl.firstChild);
 }
 
-/**
- * 隨機關卡生成 (修正：安全區域判定)
- */
 function generateLevel(difficulty) {
     platforms = [{ x: 0, y: 580, w: 800, h: 20 }];
     ladders = []; traps = []; coins = []; enemies = [];
-    playerHistory = []; // 徹底清空歷史紀錄
+    playerHistory = []; playerTrail = []; // 重置尾流
     
     const layerCount = 4;
     const layerHeight = 110;
@@ -135,12 +130,10 @@ function generateLevel(difficulty) {
         ladders.push({ x: pMainX + 20, y: y, w: 35, h: layerHeight + 12 });
         prevLadderX = pMainX + 20;
 
-        // 生成陷阱 (加入安全距離判定)
         if (traps.length < 5 && Math.random() > 0.45 && y < 450) {
             traps.push({ x: newPlatform.x + (newPlatform.w/2) - 10, y: newPlatform.y - 8, w: 20, h: 8 });
         }
 
-        // 生成普通巡邏敵人 (修正：距離玩家出生點 200px 內不生成)
         const distToStart = Math.hypot(newPlatform.x - 50, newPlatform.y - 530);
         if (newPlatform.w > 100 && Math.random() > 0.5 && distToStart > 200) {
             enemies.push({
@@ -155,25 +148,16 @@ function generateLevel(difficulty) {
         }
     }
     
-    // 生成精銳幻影 (修正：座標重置)
     if (difficulty === 'hard') {
-        enemies.push({
-            type: 'phantom',
-            x: -100, y: -100, // 初始藏在畫面外
-            w: 20, h: 20,
-            color: 'rgba(255, 71, 87, 0.6)'
-        });
+        enemies.push({ type: 'phantom', x: -100, y: -100, w: 20, h: 20, color: 'rgba(255, 71, 87, 0.6)' });
         logSystem("PHANTOM STALKER STANDBY...");
     }
 
     const coinCount = Math.floor(Math.random() * 9);
     for(let i = 0; i < coinCount; i++) {
         coins.push({
-            x: 50 + Math.random() * 700,
-            y: 100 + Math.random() * 400,
-            size: 15,
-            collected: false,
-            angle: Math.random() * Math.PI * 2
+            x: 50 + Math.random() * 700, y: 100 + Math.random() * 400,
+            size: 15, collected: false, angle: Math.random() * Math.PI * 2
         });
     }
     
@@ -188,6 +172,8 @@ function triggerExplosion(msg) {
     document.getElementById('fail-msg').innerText = msg;
     logSystem(`FAILURE: ${msg}`);
     if (score > highScore) { highScore = score; localStorage.setItem('mazeRunHighScore', score); highScoreEl.innerText = highScore; }
+    
+    // 玩家死亡粒子爆裂
     particles = [];
     for (let i = 0; i < 40; i++) {
         particles.push({
@@ -212,6 +198,35 @@ function explosionAnimationLoop() {
     if (hasLiveParticles) requestAnimationFrame(explosionAnimationLoop);
 }
 
+/**
+ * 更新玩家尾流粒子系統
+ */
+function updatePlayerTrail() {
+    // 只有在移動時才產生尾流
+    if (Math.abs(player.dx) > 0.1 || Math.abs(player.dy) > 0.1) {
+        playerTrail.push({
+            x: player.x + player.width / 2 + (Math.random() - 0.5) * 10,
+            y: player.y + player.height / 2 + (Math.random() - 0.5) * 10,
+            w: Math.random() * 10 + 5,
+            h: Math.random() * 10 + 5,
+            alpha: 0.8,
+            color: player.color
+        });
+    }
+
+    // 更新現有尾流粒子
+    for (let i = playerTrail.length - 1; i >= 0; i--) {
+        let p = playerTrail[i];
+        p.alpha -= 0.08; // 衰減速度
+        p.w *= 0.9;      // 縮小
+        p.h *= 0.9;
+        
+        if (p.alpha <= 0) {
+            playerTrail.splice(i, 1);
+        }
+    }
+}
+
 function update() {
     if (!gameActive || isDead) return;
     let elapsed = Date.now() - startTime;
@@ -221,7 +236,6 @@ function update() {
     const keys = window.myKeys || {};
     player.dx = (keys['KeyA'] || keys['ArrowLeft']) ? -player.speed : (keys['KeyD'] || keys['ArrowRight']) ? player.speed : 0;
     
-    // 紀錄歷史
     playerHistory.push({ x: player.x, y: player.y });
     if (playerHistory.length > GHOST_DELAY + 5) playerHistory.shift();
 
@@ -229,6 +243,9 @@ function update() {
     ladders.forEach(ladder => { if (player.x + player.width > ladder.x - LADDER_BUFFER && player.x < ladder.x + ladder.w + LADDER_BUFFER && player.y + player.height > ladder.y && player.y < ladder.y + ladder.h) { player.onLadder = true; } });
     if (player.onLadder) { player.dy = 0; if (keys['KeyW'] || keys['ArrowUp']) player.dy = -player.speed; if (keys['KeyS'] || keys['ArrowDown']) player.dy = player.speed; } else { if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.grounded) { player.dy = player.jumpPower; player.grounded = false; } player.dy += GRAVITY; }
     player.x += player.dx; player.y += player.dy;
+
+    // 更新尾流特效
+    updatePlayerTrail();
 
     enemies.forEach(en => {
         if (en.type === 'patrol') {
@@ -252,6 +269,22 @@ function update() {
     if (player.x + player.width > goal.x && player.x < goal.x + goal.w && player.y + player.height > goal.y && player.y < goal.y + goal.h) { gameActive = false; score += (timeLimit < 15000 ? 100 : 50); scoreEl.innerText = score; document.getElementById('clear-overlay').style.display = 'flex'; }
 }
 
+/**
+ * 繪製尾流特效
+ */
+function drawPlayerTrail() {
+    playerTrail.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = p.color;
+        // 繪製縮小的方塊
+        ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
+        ctx.restore();
+    });
+}
+
 function drawStaticScene() {
     ladders.forEach(ladder => { ctx.save(); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.shadowBlur = 25; ctx.shadowColor = '#39ff14'; ctx.globalAlpha = 0.3; ctx.strokeRect(ladder.x, ladder.y, ladder.w, ladder.h); ctx.globalAlpha = 1.0; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y); ctx.lineTo(ladder.x, ladder.y + ladder.h); ctx.moveTo(ladder.x + ladder.w, ladder.y); ctx.lineTo(ladder.x + ladder.w, ladder.y + ladder.h); ctx.stroke(); ctx.lineWidth = 1.5; for(let i = 8; i < ladder.h; i += 12) { ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y + i); ctx.lineTo(ladder.x + ladder.w, ladder.y + i); ctx.stroke(); } ctx.restore(); });
     platforms.forEach(platform => { ctx.save(); ctx.fillStyle = '#be2edd'; ctx.shadowBlur = 15; ctx.shadowColor = '#be2edd'; ctx.fillRect(platform.x, platform.y, platform.w, platform.h); ctx.fillStyle = '#efb2ff'; ctx.shadowBlur = 0; ctx.fillRect(platform.x, platform.y, platform.w, 2); ctx.restore(); });
@@ -261,12 +294,28 @@ function drawStaticScene() {
     ctx.save(); ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 35; ctx.shadowColor = '#f1c40f'; ctx.fillRect(goal.x, goal.y, goal.w, goal.h); ctx.restore();
 }
 
-function draw() { ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); drawStaticScene(); if (!isDead && gameActive) { ctx.save(); ctx.fillStyle = player.color; ctx.shadowBlur = 10; ctx.shadowColor = player.color; ctx.fillRect(player.x, player.y, player.width, player.height); ctx.restore(); } }
+function draw() { 
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); 
+    drawStaticScene(); 
+    
+    // 先畫尾流 (在玩家後面)
+    drawPlayerTrail();
+
+    if (!isDead && gameActive) { 
+        ctx.save(); 
+        ctx.fillStyle = player.color; 
+        ctx.shadowBlur = 10; 
+        ctx.shadowColor = player.color; 
+        ctx.fillRect(player.x, player.y, player.width, player.height); 
+        ctx.restore(); 
+    } 
+}
+
 function gameLoop(t) { if (!gameActive) return; if (t - lastTime >= FRAME_DELAY) { update(); draw(); lastTime = t - (t - lastTime) % FRAME_DELAY; } requestAnimationFrame(gameLoop); }
 function startGame(mode) { score = 0; scoreEl.innerText = 0; document.getElementById('menu-overlay').style.display = 'none'; startLevel(mode); }
 function nextLevel(mode) { document.getElementById('clear-overlay').style.display = 'none'; startLevel(mode); }
 function startLevel(mode) { 
-    playerHistory = []; // 重要：每次開始都要重置
+    playerHistory = []; 
     timeLimit = (mode === 'hard' ? 12000 : 25000); 
     player.x = 50; player.y = 530; 
     generateLevel(mode); 
