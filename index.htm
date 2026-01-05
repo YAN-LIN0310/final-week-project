@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>Speed Run - Professional Refactored v1.5</title>
+    <title>Speed Run - Professional Refactored v1.6</title>
     <style>
         body { margin: 0; background: #050505; height: 100vh; color: white; font-family: 'Consolas', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .layout-wrapper { display: flex; gap: 20px; align-items: flex-start; }
@@ -38,15 +38,15 @@
                 <div class="dash-value c-high" id="high-score-el">0</div>
             </div>
             <div class="system-log" id="system-log">
-                <div class="log-entry">Hostile Entities Loaded...</div>
-                <div class="log-entry">Watch Your Shadow.</div>
+                <div class="log-entry">Bug Fixed: Safe Spawn Zone.</div>
+                <div class="log-entry">Phantom Echo Reset.</div>
             </div>
         </div>
 
         <div id="game-container">
             <div id="menu-overlay" class="overlay">
                 <h1 style="color: #00d2d3;">SPEED RUN</h1>
-                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.5</p>
+                <p style="color: #bbb; margin: 10px 0 20px 0;">Procedural Death Labyrinth v1.6</p>
                 <button class="btn btn-normal" onclick="startGame('normal')">正常挑戰</button>
                 <button class="btn btn-hard" onclick="startGame('hard')">極限挑戰</button>
             </div>
@@ -76,7 +76,7 @@ const FRAME_DELAY = 1000 / FPS;
 const LADDER_BUFFER = 10;
 const COIN_BONUS = 200; 
 const ENEMY_SPEED = 2;
-const GHOST_DELAY = 60; // 延遲 60 影格 (約 1 秒)
+const GHOST_DELAY = 60; 
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -99,7 +99,7 @@ const player = {
 };
 
 let platforms = [], ladders = [], traps = [], coins = [], enemies = [], particles = [];
-let playerHistory = []; // 用於紀錄玩家過去位置
+let playerHistory = []; 
 let goal = { x: 0, y: 0, w: 40, h: 65 };
 
 highScoreEl.innerText = highScore;
@@ -113,12 +113,12 @@ function logSystem(msg) {
 }
 
 /**
- * 隨機關卡與敵人生成
+ * 隨機關卡生成 (修正：安全區域判定)
  */
 function generateLevel(difficulty) {
     platforms = [{ x: 0, y: 580, w: 800, h: 20 }];
     ladders = []; traps = []; coins = []; enemies = [];
-    playerHistory = [];
+    playerHistory = []; // 徹底清空歷史紀錄
     
     const layerCount = 4;
     const layerHeight = 110;
@@ -135,13 +135,14 @@ function generateLevel(difficulty) {
         ladders.push({ x: pMainX + 20, y: y, w: 35, h: layerHeight + 12 });
         prevLadderX = pMainX + 20;
 
-        // 生成陷阱
-        if (traps.length < 5 && Math.random() > 0.45) {
+        // 生成陷阱 (加入安全距離判定)
+        if (traps.length < 5 && Math.random() > 0.45 && y < 450) {
             traps.push({ x: newPlatform.x + (newPlatform.w/2) - 10, y: newPlatform.y - 8, w: 20, h: 8 });
         }
 
-        // 生成普通巡邏敵人 (紅色方塊，帶有小眼睛)
-        if (newPlatform.w > 100 && Math.random() > 0.5) {
+        // 生成普通巡邏敵人 (修正：距離玩家出生點 200px 內不生成)
+        const distToStart = Math.hypot(newPlatform.x - 50, newPlatform.y - 530);
+        if (newPlatform.w > 100 && Math.random() > 0.5 && distToStart > 200) {
             enemies.push({
                 type: 'patrol',
                 x: newPlatform.x + 10,
@@ -154,18 +155,17 @@ function generateLevel(difficulty) {
         }
     }
     
-    // 生成精銳幻影敵人 (僅在極限挑戰)
+    // 生成精銳幻影 (修正：座標重置)
     if (difficulty === 'hard') {
         enemies.push({
             type: 'phantom',
-            x: 50, y: 530,
+            x: -100, y: -100, // 初始藏在畫面外
             w: 20, h: 20,
             color: 'rgba(255, 71, 87, 0.6)'
         });
-        logSystem("PHANTOM STALKER DETECTED!");
+        logSystem("PHANTOM STALKER STANDBY...");
     }
 
-    // 生成金幣
     const coinCount = Math.floor(Math.random() * 9);
     for(let i = 0; i < coinCount; i++) {
         coins.push({
@@ -187,13 +187,7 @@ function triggerExplosion(msg) {
     isDead = true; gameActive = false; 
     document.getElementById('fail-msg').innerText = msg;
     logSystem(`FAILURE: ${msg}`);
-
-    if (score > highScore) {
-        highScore = score;
-        localStorage.setItem('mazeRunHighScore', score);
-        highScoreEl.innerText = highScore;
-    }
-
+    if (score > highScore) { highScore = score; localStorage.setItem('mazeRunHighScore', score); highScoreEl.innerText = highScore; }
     particles = [];
     for (let i = 0; i < 40; i++) {
         particles.push({
@@ -213,199 +207,66 @@ function explosionAnimationLoop() {
     let hasLiveParticles = false;
     particles.forEach(p => {
         p.x += p.sx; p.y += p.sy; p.alpha -= 0.02;
-        if (p.alpha > 0) {
-            hasLiveParticles = true;
-            ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
-            ctx.fillRect(p.x, p.y, p.size, p.size); ctx.restore();
-        }
+        if (p.alpha > 0) { hasLiveParticles = true; ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.restore(); }
     });
     if (hasLiveParticles) requestAnimationFrame(explosionAnimationLoop);
 }
 
 function update() {
     if (!gameActive || isDead) return;
-
     let elapsed = Date.now() - startTime;
     let remainingTime = timeLimit - elapsed;
     if (remainingTime <= 0) { remainingTime = 0; triggerExplosion("TIME EXPIRED"); return; }
-
     timerEl.innerText = `${Math.floor(remainingTime/1000).toString().padStart(2,'0')}:${Math.floor((remainingTime%1000)/10).toString().padStart(2,'0')}`;
-
     const keys = window.myKeys || {};
     player.dx = (keys['KeyA'] || keys['ArrowLeft']) ? -player.speed : (keys['KeyD'] || keys['ArrowRight']) ? player.speed : 0;
     
-    // 紀錄玩家歷史座標 (延遲 1 秒)
+    // 紀錄歷史
     playerHistory.push({ x: player.x, y: player.y });
-    if (playerHistory.length > GHOST_DELAY + 10) playerHistory.shift();
+    if (playerHistory.length > GHOST_DELAY + 5) playerHistory.shift();
 
     player.onLadder = false;
-    ladders.forEach(ladder => { 
-        if (player.x + player.width > ladder.x - LADDER_BUFFER && player.x < ladder.x + ladder.w + LADDER_BUFFER && 
-            player.y + player.height > ladder.y && player.y < ladder.y + ladder.h) {
-            player.onLadder = true; 
-        } 
-    });
-
-    if (player.onLadder) {
-        player.dy = 0;
-        if (keys['KeyW'] || keys['ArrowUp']) player.dy = -player.speed;
-        if (keys['KeyS'] || keys['ArrowDown']) player.dy = player.speed;
-    } else {
-        if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.grounded) { player.dy = player.jumpPower; player.grounded = false; }
-        player.dy += GRAVITY;
-    }
-
+    ladders.forEach(ladder => { if (player.x + player.width > ladder.x - LADDER_BUFFER && player.x < ladder.x + ladder.w + LADDER_BUFFER && player.y + player.height > ladder.y && player.y < ladder.y + ladder.h) { player.onLadder = true; } });
+    if (player.onLadder) { player.dy = 0; if (keys['KeyW'] || keys['ArrowUp']) player.dy = -player.speed; if (keys['KeyS'] || keys['ArrowDown']) player.dy = player.speed; } else { if ((keys['KeyW'] || keys['ArrowUp'] || keys['Space']) && player.grounded) { player.dy = player.jumpPower; player.grounded = false; } player.dy += GRAVITY; }
     player.x += player.dx; player.y += player.dy;
 
-    // 敵人邏輯更新
     enemies.forEach(en => {
         if (en.type === 'patrol') {
             en.x += en.dx;
-            if (en.x <= en.platform.x || en.x + en.w >= en.platform.x + en.platform.w) {
-                en.dx *= -1;
-            }
-        } else if (en.type === 'phantom') {
-            if (playerHistory.length > GHOST_DELAY) {
-                const target = playerHistory[0];
-                en.x += (target.x - en.x) * 0.15; // 平滑跟隨
-                en.y += (target.y - en.y) * 0.15;
-            }
+            if (en.x <= en.platform.x || en.x + en.w >= en.platform.x + en.platform.w) en.dx *= -1;
+        } else if (en.type === 'phantom' && playerHistory.length > GHOST_DELAY) {
+            const target = playerHistory[0];
+            en.x += (target.x - en.x) * 0.12; en.y += (target.y - en.y) * 0.12;
         }
-        // 敵人碰撞
         if (player.x < en.x + en.w && player.x + player.width > en.x && player.y < en.y + en.h && player.y + player.height > en.y) {
             triggerExplosion(en.type === 'phantom' ? "CAUGHT BY PHANTOM" : "TERMINATED BY PATROL");
         }
     });
 
-    // 金幣與動畫
-    coins.forEach(coin => {
-        if (!coin.collected) {
-            coin.angle += 0.05;
-            let hover = Math.sin(Date.now() / 200) * 5;
-            if (player.x < coin.x + coin.size && player.x + player.width > coin.x - coin.size &&
-                player.y < coin.y + hover + coin.size && player.y + player.height > coin.y + hover - coin.size) {
-                coin.collected = true; score += COIN_BONUS; scoreEl.innerText = score;
-                logSystem(`COLLECTED: +${COIN_BONUS}`);
-            }
-        }
-    });
-
-    traps.forEach(trap => {
-        if (player.x < trap.x + trap.w && player.x + player.width > trap.x && player.y < trap.y + trap.h && player.y + player.height > trap.y) {
-            triggerExplosion("TRAP TRIGGERED");
-        }
-    });
-
+    coins.forEach(coin => { if (!coin.collected) { coin.angle += 0.05; let hover = Math.sin(Date.now() / 200) * 5; if (player.x < coin.x + coin.size && player.x + player.width > coin.x - coin.size && player.y < coin.y + hover + coin.size && player.y + player.height > coin.y + hover - coin.size) { coin.collected = true; score += COIN_BONUS; scoreEl.innerText = score; logSystem(`COLLECTED: +${COIN_BONUS}`); } } });
+    traps.forEach(trap => { if (player.x < trap.x + trap.w && player.x + player.width > trap.x && player.y < trap.y + trap.h && player.y + player.height > trap.y) triggerExplosion("TRAP TRIGGERED"); });
     player.grounded = false;
-    platforms.forEach(platform => {
-        if (player.dy >= 0 && player.x + player.width > platform.x && player.x < platform.x + platform.w && 
-            player.y + player.height <= platform.y + 15 && player.y + player.height + player.dy >= platform.y) {
-            player.y = platform.y - player.height; player.dy = 0; player.grounded = true;
-        }
-    });
-
+    platforms.forEach(platform => { if (player.dy >= 0 && player.x + player.width > platform.x && player.x < platform.x + platform.w && player.y + player.height <= platform.y + 15 && player.y + player.height + player.dy >= platform.y) { player.y = platform.y - player.height; player.dy = 0; player.grounded = true; } });
     if (player.x < 0) player.x = 0; if (player.x + player.width > CANVAS_WIDTH) player.x = CANVAS_WIDTH - player.width;
     if (player.y > CANVAS_HEIGHT) triggerExplosion("FELL INTO ABYSS");
-    
-    if (player.x + player.width > goal.x && player.x < goal.x + goal.w && player.y + player.height > goal.y && player.y < goal.y + goal.h) {
-        gameActive = false; score += (timeLimit < 15000 ? 100 : 50); 
-        scoreEl.innerText = score;
-        document.getElementById('clear-overlay').style.display = 'flex';
-    }
+    if (player.x + player.width > goal.x && player.x < goal.x + goal.w && player.y + player.height > goal.y && player.y < goal.y + goal.h) { gameActive = false; score += (timeLimit < 15000 ? 100 : 50); scoreEl.innerText = score; document.getElementById('clear-overlay').style.display = 'flex'; }
 }
 
 function drawStaticScene() {
-    ladders.forEach(ladder => { 
-        ctx.save();
-        ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.shadowBlur = 25; ctx.shadowColor = '#39ff14'; ctx.globalAlpha = 0.3;
-        ctx.strokeRect(ladder.x, ladder.y, ladder.w, ladder.h);
-        ctx.globalAlpha = 1.0; ctx.lineWidth = 3; ctx.shadowBlur = 10;
-        ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y); ctx.lineTo(ladder.x, ladder.y + ladder.h);
-        ctx.moveTo(ladder.x + ladder.w, ladder.y); ctx.lineTo(ladder.x + ladder.w, ladder.y + ladder.h); ctx.stroke();
-        ctx.lineWidth = 1.5;
-        for(let i = 8; i < ladder.h; i += 12) {
-            ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y + i); ctx.lineTo(ladder.x + ladder.w, ladder.y + i); ctx.stroke();
-        }
-        ctx.restore();
-    });
-
-    platforms.forEach(platform => {
-        ctx.save();
-        ctx.fillStyle = '#be2edd'; ctx.shadowBlur = 15; ctx.shadowColor = '#be2edd';
-        ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
-        ctx.fillStyle = '#efb2ff'; ctx.shadowBlur = 0; ctx.fillRect(platform.x, platform.y, platform.w, 2);
-        ctx.restore();
-    });
-
-    traps.forEach(trap => {
-        ctx.save();
-        ctx.fillStyle = '#ff4757'; ctx.shadowBlur = 20; ctx.shadowColor = '#ff4757';
-        ctx.fillRect(trap.x, trap.y, trap.w, trap.h);
-        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fillRect(trap.x + 5, trap.y + 2, trap.w - 10, 2); 
-        ctx.restore();
-    });
-
-    // 繪製敵人
-    enemies.forEach(en => {
-        ctx.save();
-        ctx.fillStyle = en.color;
-        ctx.shadowBlur = en.type === 'phantom' ? 20 : 10;
-        ctx.shadowColor = '#ff4757';
-        
-        if (en.type === 'phantom') {
-            ctx.globalAlpha = 0.4 + Math.abs(Math.sin(Date.now() / 300)) * 0.4;
-            ctx.fillRect(en.x, en.y, en.w, en.h);
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-            ctx.strokeRect(en.x, en.y, en.w, en.h);
-        } else {
-            ctx.fillRect(en.x, en.y, en.w, en.h);
-            ctx.fillStyle = '#fff'; // 小眼睛
-            ctx.fillRect(en.x + 4, en.y + 4, 4, 4);
-            ctx.fillRect(en.x + 12, en.y + 4, 4, 4);
-        }
-        ctx.restore();
-    });
-
-    coins.forEach(coin => {
-        if (!coin.collected) {
-            ctx.save();
-            let hover = Math.sin(Date.now() / 200) * 5;
-            let spinScale = Math.cos(coin.angle);
-            ctx.translate(coin.x, coin.y + hover);
-            ctx.scale(spinScale, 1);
-            ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 15; ctx.shadowColor = '#f1c40f';
-            ctx.beginPath(); ctx.arc(0, 0, coin.size, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(0, 0, coin.size * 0.6, 0, Math.PI * 2); ctx.stroke();
-            ctx.restore();
-        }
-    });
-
-    ctx.save();
-    ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 35; ctx.shadowColor = '#f1c40f';
-    ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
-    ctx.restore();
+    ladders.forEach(ladder => { ctx.save(); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.shadowBlur = 25; ctx.shadowColor = '#39ff14'; ctx.globalAlpha = 0.3; ctx.strokeRect(ladder.x, ladder.y, ladder.w, ladder.h); ctx.globalAlpha = 1.0; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y); ctx.lineTo(ladder.x, ladder.y + ladder.h); ctx.moveTo(ladder.x + ladder.w, ladder.y); ctx.lineTo(ladder.x + ladder.w, ladder.y + ladder.h); ctx.stroke(); ctx.lineWidth = 1.5; for(let i = 8; i < ladder.h; i += 12) { ctx.beginPath(); ctx.moveTo(ladder.x, ladder.y + i); ctx.lineTo(ladder.x + ladder.w, ladder.y + i); ctx.stroke(); } ctx.restore(); });
+    platforms.forEach(platform => { ctx.save(); ctx.fillStyle = '#be2edd'; ctx.shadowBlur = 15; ctx.shadowColor = '#be2edd'; ctx.fillRect(platform.x, platform.y, platform.w, platform.h); ctx.fillStyle = '#efb2ff'; ctx.shadowBlur = 0; ctx.fillRect(platform.x, platform.y, platform.w, 2); ctx.restore(); });
+    traps.forEach(trap => { ctx.save(); ctx.fillStyle = '#ff4757'; ctx.shadowBlur = 20; ctx.shadowColor = '#ff4757'; ctx.fillRect(trap.x, trap.y, trap.w, trap.h); ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fillRect(trap.x + 5, trap.y + 2, trap.w - 10, 2); ctx.restore(); });
+    enemies.forEach(en => { ctx.save(); ctx.fillStyle = en.color; ctx.shadowBlur = en.type === 'phantom' ? 20 : 10; ctx.shadowColor = '#ff4757'; if (en.type === 'phantom') { ctx.globalAlpha = 0.4 + Math.abs(Math.sin(Date.now() / 300)) * 0.4; ctx.fillRect(en.x, en.y, en.w, en.h); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(en.x, en.y, en.w, en.h); } else { ctx.fillRect(en.x, en.y, en.w, en.h); ctx.fillStyle = '#fff'; ctx.fillRect(en.x + 4, en.y + 4, 4, 4); ctx.fillRect(en.x + 12, en.y + 4, 4, 4); } ctx.restore(); });
+    coins.forEach(coin => { if (!coin.collected) { ctx.save(); let hover = Math.sin(Date.now() / 200) * 5; let spinScale = Math.cos(coin.angle); ctx.translate(coin.x, coin.y + hover); ctx.scale(spinScale, 1); ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 15; ctx.shadowColor = '#f1c40f'; ctx.beginPath(); ctx.arc(0, 0, coin.size, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, coin.size * 0.6, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); } });
+    ctx.save(); ctx.fillStyle = '#f1c40f'; ctx.shadowBlur = 35; ctx.shadowColor = '#f1c40f'; ctx.fillRect(goal.x, goal.y, goal.w, goal.h); ctx.restore();
 }
 
-function draw() {
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    drawStaticScene();
-    if (!isDead && gameActive) {
-        ctx.save();
-        ctx.fillStyle = player.color; ctx.shadowBlur = 10; ctx.shadowColor = player.color;
-        ctx.fillRect(player.x, player.y, player.width, player.height); ctx.restore();
-    }
-}
-
-function gameLoop(t) { 
-    if (!gameActive) return; 
-    if (t - lastTime >= FRAME_DELAY) { update(); draw(); lastTime = t - (t - lastTime) % FRAME_DELAY; } 
-    requestAnimationFrame(gameLoop); 
-}
-
+function draw() { ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); drawStaticScene(); if (!isDead && gameActive) { ctx.save(); ctx.fillStyle = player.color; ctx.shadowBlur = 10; ctx.shadowColor = player.color; ctx.fillRect(player.x, player.y, player.width, player.height); ctx.restore(); } }
+function gameLoop(t) { if (!gameActive) return; if (t - lastTime >= FRAME_DELAY) { update(); draw(); lastTime = t - (t - lastTime) % FRAME_DELAY; } requestAnimationFrame(gameLoop); }
 function startGame(mode) { score = 0; scoreEl.innerText = 0; document.getElementById('menu-overlay').style.display = 'none'; startLevel(mode); }
 function nextLevel(mode) { document.getElementById('clear-overlay').style.display = 'none'; startLevel(mode); }
 function startLevel(mode) { 
+    playerHistory = []; // 重要：每次開始都要重置
     timeLimit = (mode === 'hard' ? 12000 : 25000); 
     player.x = 50; player.y = 530; 
     generateLevel(mode); 
@@ -414,13 +275,8 @@ function startLevel(mode) {
     requestAnimationFrame(gameLoop); 
 }
 function showMainMenu() { location.reload(); }
-
-window.myKeys = {}; 
-window.addEventListener('keydown', e => window.myKeys[e.code] = true); 
-window.addEventListener('keyup', e => window.myKeys[e.code] = false);
-
-generateLevel('normal'); 
-draw();
+window.myKeys = {}; window.addEventListener('keydown', e => window.myKeys[e.code] = true); window.addEventListener('keyup', e => window.myKeys[e.code] = false);
+generateLevel('normal'); draw();
 </script>
 </body>
 </html>
